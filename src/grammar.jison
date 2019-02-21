@@ -23,6 +23,8 @@
 "right of"        return 'right_of';
 "over"            return 'over';
 "note"            return 'note';
+opt[^\r\n]+			  return 'OPTIONAL_START';
+"end"							return 'end';
 "title"           { this.begin('title'); return 'title'; }
 <title>[^\r\n]+   { this.popState(); return 'MESSAGE'; }
 ","               return ',';
@@ -60,7 +62,22 @@ statement
 	: 'participant' actor_alias { $2; }
 	| signal               { yy.parser.yy.addSignal($1); }
 	| note_statement       { yy.parser.yy.addSignal($1); }
+	| optional_statement	 { yy.parser.yy.addSignal($1); }
 	| 'title' message      { yy.parser.yy.setTitle($2);  }
+	;
+
+nested_block
+	: /* empty */
+	| nested_block nested_line
+	;
+
+nested_line
+	: nested_statement  { $$ = $1; }
+	| 'NL'
+	;
+
+nested_statement
+	: signal			{ yy.parser.yy.addSignal($1); }
 	;
 
 note_statement
@@ -108,6 +125,14 @@ arrowtype
 
 message
 	: MESSAGE { $$ = Diagram.unescape($1.substring(1)); }
+	;
+
+optional_start
+	: OPTIONAL_START { block = new Diagram.Optional($1.slice(4)); yy.parser.yy.startNestedBlock(block); }
+	;
+
+optional_statement
+	: optional_start 'NL' nested_block 'NL' 'end' { $$ = yy.parser.yy.endNestedBlock(); }
 	;
 
 

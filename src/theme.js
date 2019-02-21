@@ -232,6 +232,7 @@ _.extend(BaseTheme.prototype, {
       // Indexes of the left and right actors involved
       var a;
       var b;
+      var blockActors;
 
       var bb = this.textBBox(s.message, font);
 
@@ -280,6 +281,31 @@ _.extend(BaseTheme.prototype, {
         } else if (s.placement == PLACEMENT.OVER) {
           // Over single actor
           a = s.actor.index;
+          actorEnsureDistance(a - 1, a, s.width / 2);
+          actorEnsureDistance(a, a + 1, s.width / 2);
+          this.signalsHeight_ += s.height;
+
+          return; // Bail out early
+        }
+      } else if (s.type == 'Optional') {
+        s.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
+        s.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
+
+        // HACK lets include the actor's padding
+        extraWidth = 2 * ACTOR_MARGIN;
+
+        // Over multiple actors
+        blockActors = _.filter(s.actors, function(a) { return !!a; });
+
+        if (blockActors.length > 1) {
+          a = blockActors[0].index;
+          b = blockActors[blockActors.length - 1].index;
+
+          // We don't need our padding, and we want to overlap
+          extraWidth = -(NOTE_PADDING * 2 + NOTE_OVERLAP * 2);
+        } else {
+          // Over single actor
+          a = blockActors[0].index;
           actorEnsureDistance(a - 1, a, s.width / 2);
           actorEnsureDistance(a, a + 1, s.width / 2);
           this.signalsHeight_ += s.height;
@@ -371,6 +397,8 @@ _.extend(BaseTheme.prototype, {
 
       } else if (s.type == 'Note') {
         this.drawNote(s, y);
+      } else if (s.type == 'Optional') {
+        this.drawOptional(s, y);
       }
 
       y += s.height;
@@ -438,6 +466,26 @@ _.extend(BaseTheme.prototype, {
       throw new Error('Unhandled note placement: ' + note.placement);
   }
     return this.drawTextBox(note, note.message, NOTE_MARGIN, NOTE_PADDING, this.font_, ALIGN_LEFT);
+  },
+
+  drawOptional: function(optional, offsetY) {
+    console.log('optional', optional);
+    optional.y = offsetY;
+    var actorA = optional.actors[0];
+    var aX = getCenterX(actorA);
+    optional.x = aX - optional.width / 2;
+
+    if (optional.actors.length > 1) {
+      var bX = getCenterX(optional.actors[optional.actors.length - 1]);
+      var overlap = NOTE_OVERLAP + NOTE_PADDING;
+      optional.x = Math.min(aX, bX) - overlap;
+      optional.width = (Math.max(aX, bX) + overlap) - optional.x;
+    } else {
+      optional.x = aX - optional.width / 2;
+    }
+
+    var optionalMessage = '[' + optional.message + ']';
+    return this.drawTextBox(optional, optionalMessage, NOTE_MARGIN, NOTE_PADDING, this.font_, ALIGN_LEFT);
   },
 
   /**

@@ -9,6 +9,7 @@ function Diagram() {
   this.title   = undefined;
   this.actors  = [];
   this.signals = [];
+  this.nestedBlocks = []; // stack (shift to pull, unshift to push)
 }
 /*
  * Return an existing actor with this alias, or creates a new one with alias and name.
@@ -51,7 +52,20 @@ Diagram.prototype.setTitle = function(title) {
 };
 
 Diagram.prototype.addSignal = function(signal) {
+  var nestedBlock = this.nestedBlocks[0];
+  if (nestedBlock) {
+    signal.belongsTo(nestedBlock);
+    nestedBlock.addSignal(signal);
+  }
   this.signals.push(signal);
+};
+
+Diagram.prototype.startNestedBlock = function(signal) {
+  this.nestedBlocks.unshift(signal);
+};
+
+Diagram.prototype.endNestedBlock = function(signal) {
+  return this.nestedBlocks.shift();
 };
 
 Diagram.Actor = function(alias, name, index) {
@@ -67,10 +81,15 @@ Diagram.Signal = function(actorA, signaltype, actorB, message) {
   this.linetype   = signaltype & 3;
   this.arrowtype  = (signaltype >> 2) & 3;
   this.message    = message;
+  this.nestedBlock = null;
 };
 
 Diagram.Signal.prototype.isSelf = function() {
   return this.actorA.index == this.actorB.index;
+};
+
+Diagram.Signal.prototype.belongsTo = function(nestedBlock) {
+  this.nestedBlock = nestedBlock;
 };
 
 Diagram.Note = function(actor, placement, message) {
@@ -87,6 +106,43 @@ Diagram.Note = function(actor, placement, message) {
 Diagram.Note.prototype.hasManyActors = function() {
   return _.isArray(this.actor);
 };
+
+// Diagram.Note.prototype.belongsTo = function (nestedBlock) {
+//   this.nestedBlock = nestedBlock;
+// };
+
+Diagram.Optional = function(message) {
+  this.type = 'Optional';
+  this.message = message;
+  this.signals = [];
+  this.actors = [];
+}
+
+Diagram.Optional.prototype.addSignal = function (signal) {
+  if (signal.type === 'Signal') {
+    this.actors[signal.actorA.index] = signal.actorA;
+
+    if (!signal.isSelf()) {
+      this.actors[signal.actorB.index] = signal.actorB;
+    }
+  }
+
+  this.signals.push(signal);
+  signal.belongsTo(this);
+};
+
+// Diagram.Optional.prototype.addSignals = function (signals) {
+//   const filteredSignals = _.filter(signals, s => s.type === 'Signal');
+//   _.each(filteredSignals, this.addSignal.bind(this));
+// }
+
+// Diagram.Optional.prototype.hasManyActors = function () {
+
+// };
+
+// Diagram.Optional.prototype.belongsTo = function (nestedBlock) {
+//   this.nestedBlock = nestedBlock;
+// };
 
 Diagram.unescape = function(s) {
   // Turn "\\n" into "\n"
