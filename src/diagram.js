@@ -56,8 +56,9 @@ Diagram.prototype.addSignal = function(signal) {
   if (nestedBlock) {
     signal.belongsTo(nestedBlock);
     nestedBlock.addSignal(signal);
+  } else {
+    this.signals.push(signal);
   }
-  this.signals.push(signal);
 };
 
 Diagram.prototype.startNestedBlock = function(signal) {

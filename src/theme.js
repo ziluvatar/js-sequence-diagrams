@@ -172,6 +172,125 @@ _.extend(BaseTheme.prototype, {
     this.drawSignals(y + this.actorsHeight_);
   },
 
+  actorEnsureDistance: function (a, b, d) {
+    assert(a < b, 'a must be less than or equal to b');
+
+    if (a < 0) {
+      // Ensure b has left margin
+      b = this.diagram.actors[b];
+      b.x = Math.max(d - b.width / 2, b.x);
+    } else if (b >= this.diagram.actors.length) {
+      // Ensure a has right margin
+      a = this.diagram.actors[a];
+      a.paddingRight = Math.max(d, a.paddingRight);
+    } else {
+      a = this.diagram.actors[a];
+      a.distances[b] = Math.max(d, a.distances[b] ? a.distances[b] : 0);
+    }
+  },
+
+  signalLayout: function (signal) {
+    signal.width += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
+    signal.height += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
+
+    if (signal.isSelf()) {
+      // TODO Self signals need a min height
+      a = signal.actorA.index;
+      b = a + 1;
+      signal.width += SELF_SIGNAL_WIDTH;
+    } else {
+      a = Math.min(signal.actorA.index, signal.actorB.index);
+      b = Math.max(signal.actorA.index, signal.actorB.index);
+    }
+    this.actorEnsureDistance(a, b, signal.width);
+  },
+
+  noteLayout: function (signal) {
+    signal.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
+    signal.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
+
+    // HACK lets include the actor'signal padding
+    var extraWidth = 2 * ACTOR_MARGIN;
+
+    if (signal.placement == PLACEMENT.LEFTOF) {
+      b = signal.actor.index;
+      a = b - 1;
+      this.actorEnsureDistance(a, b, signal.width + extraWidth);
+    } else if (signal.placement == PLACEMENT.RIGHTOF) {
+      a = signal.actor.index;
+      b = a + 1;
+      this.actorEnsureDistance(a, b, signal.width + extraWidth);
+    } else if (signal.placement == PLACEMENT.OVER && signal.hasManyActors()) {
+      // Over multiple actors
+      a = Math.min(signal.actor[0].index, signal.actor[1].index);
+      b = Math.max(signal.actor[0].index, signal.actor[1].index);
+
+      // We don't need our padding, and we want to overlap
+      extraWidth = -(NOTE_PADDING * 2 + NOTE_OVERLAP * 2);
+      this.actorEnsureDistance(a, b, signal.width + extraWidth);
+    } else if (signal.placement == PLACEMENT.OVER) {
+      // Over single actor
+      a = signal.actor.index;
+      this.actorEnsureDistance(a - 1, a, signal.width / 2);
+      this.actorEnsureDistance(a, a + 1, signal.width / 2);
+    }
+  },
+
+  optionalLayout: function(signal) {
+    signal.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
+    signal.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
+
+    // HACK lets include the actor'signal padding
+    var extraWidth = 2 * ACTOR_MARGIN;
+
+    // Over multiple actors
+    var blockActors = _.filter(signal.actors, function (a) { return !!a; });
+
+    if (blockActors.length > 1) {
+      a = blockActors[0].index;
+      b = blockActors[blockActors.length - 1].index;
+
+      // We don't need our padding, and we want to overlap
+      extraWidth = -(NOTE_PADDING * 2 + NOTE_OVERLAP * 2);
+      this.actorEnsureDistance(a, b, signal.width + extraWidth);
+    } else {
+      // Over single actor
+      a = blockActors[0].index;
+      this.actorEnsureDistance(a - 1, a, signal.width / 2);
+      this.actorEnsureDistance(a, a + 1, signal.width / 2);
+    }
+
+    // Nested signal layouts
+    this.processSignalLayouts(signal.signals);
+
+    signal.height += _.reduce(signal.signals, function(totalHeight, s) {
+      return totalHeight + s.height;
+    }, 0);
+  },
+
+  processSignalLayouts: function(signals) {
+    _.each(signals, _.bind(function (s) {
+      // Indexes of the left and right actors involved
+      var bb = this.textBBox(s.message, this.font_);
+
+      s.textBB = bb;
+      s.width = bb.width;
+      s.height = bb.height;
+
+      if (s.type == 'Signal') {
+        this.signalLayout(s);
+      } else if (s.type == 'Note') {
+        this.noteLayout(s);
+      } else if (s.type == 'Optional') {
+        this.optionalLayout(s);
+      } else {
+        throw new Error('Unhandled signal type:' + s.type);
+      }
+
+      this.signalsHeight_ += s.height;
+    }, this));
+  },
+
   layout: function() {
     // Local copies
     var diagram = this.diagram;
@@ -211,114 +330,7 @@ _.extend(BaseTheme.prototype, {
       this.actorsHeight_ = Math.max(a.height, this.actorsHeight_);
     }, this));
 
-    function actorEnsureDistance(a, b, d) {
-      assert(a < b, 'a must be less than or equal to b');
-
-      if (a < 0) {
-        // Ensure b has left margin
-        b = actors[b];
-        b.x = Math.max(d - b.width / 2, b.x);
-      } else if (b >= actors.length) {
-        // Ensure a has right margin
-        a = actors[a];
-        a.paddingRight = Math.max(d, a.paddingRight);
-      } else {
-        a = actors[a];
-        a.distances[b] = Math.max(d, a.distances[b] ? a.distances[b] : 0);
-      }
-    }
-
-    _.each(signals, _.bind(function(s) {
-      // Indexes of the left and right actors involved
-      var a;
-      var b;
-      var blockActors;
-
-      var bb = this.textBBox(s.message, font);
-
-      s.textBB = bb;
-      s.width   = bb.width;
-      s.height  = bb.height;
-
-      var extraWidth = 0;
-
-      if (s.type == 'Signal') {
-
-        s.width  += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
-        s.height += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
-
-        if (s.isSelf()) {
-          // TODO Self signals need a min height
-          a = s.actorA.index;
-          b = a + 1;
-          s.width += SELF_SIGNAL_WIDTH;
-        } else {
-          a = Math.min(s.actorA.index, s.actorB.index);
-          b = Math.max(s.actorA.index, s.actorB.index);
-        }
-
-      } else if (s.type == 'Note') {
-        s.width  += (NOTE_MARGIN + NOTE_PADDING) * 2;
-        s.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
-
-        // HACK lets include the actor's padding
-        extraWidth = 2 * ACTOR_MARGIN;
-
-        if (s.placement == PLACEMENT.LEFTOF) {
-          b = s.actor.index;
-          a = b - 1;
-        } else if (s.placement == PLACEMENT.RIGHTOF) {
-          a = s.actor.index;
-          b = a + 1;
-        } else if (s.placement == PLACEMENT.OVER && s.hasManyActors()) {
-          // Over multiple actors
-          a = Math.min(s.actor[0].index, s.actor[1].index);
-          b = Math.max(s.actor[0].index, s.actor[1].index);
-
-          // We don't need our padding, and we want to overlap
-          extraWidth = -(NOTE_PADDING * 2 + NOTE_OVERLAP * 2);
-
-        } else if (s.placement == PLACEMENT.OVER) {
-          // Over single actor
-          a = s.actor.index;
-          actorEnsureDistance(a - 1, a, s.width / 2);
-          actorEnsureDistance(a, a + 1, s.width / 2);
-          this.signalsHeight_ += s.height;
-
-          return; // Bail out early
-        }
-      } else if (s.type == 'Optional') {
-        s.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
-        s.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
-
-        // HACK lets include the actor's padding
-        extraWidth = 2 * ACTOR_MARGIN;
-
-        // Over multiple actors
-        blockActors = _.filter(s.actors, function(a) { return !!a; });
-
-        if (blockActors.length > 1) {
-          a = blockActors[0].index;
-          b = blockActors[blockActors.length - 1].index;
-
-          // We don't need our padding, and we want to overlap
-          extraWidth = -(NOTE_PADDING * 2 + NOTE_OVERLAP * 2);
-        } else {
-          // Over single actor
-          a = blockActors[0].index;
-          actorEnsureDistance(a - 1, a, s.width / 2);
-          actorEnsureDistance(a, a + 1, s.width / 2);
-          this.signalsHeight_ += s.height;
-
-          return; // Bail out early
-        }
-      } else {
-        throw new Error('Unhandled signal type:' + s.type);
-      }
-
-      actorEnsureDistance(a, b, s.width + extraWidth);
-      this.signalsHeight_ += s.height;
-    }, this));
+    this.processSignalLayouts(signals);
 
     // Re-jig the positions
     var actorsX = 0;
@@ -384,9 +396,9 @@ _.extend(BaseTheme.prototype, {
     this.drawTextBox(actor, actor.name, ACTOR_MARGIN, ACTOR_PADDING, this.font_, ALIGN_CENTER);
   },
 
-  drawSignals: function(offsetY) {
+  drawSignals: function(offsetY, signals) {
     var y = offsetY;
-    _.each(this.diagram.signals, _.bind(function(s) {
+    _.each(signals || this.diagram.signals, _.bind(function(s) {
       // TODO Add debug mode, that draws padding/margin box
       if (s.type == 'Signal') {
         if (s.isSelf()) {
@@ -485,7 +497,11 @@ _.extend(BaseTheme.prototype, {
     }
 
     var optionalMessage = '[' + optional.message + ']';
-    return this.drawTextBox(optional, optionalMessage, NOTE_MARGIN, NOTE_PADDING, this.font_, ALIGN_LEFT);
+    var t = this.drawTextBox(optional, optionalMessage, NOTE_MARGIN, NOTE_PADDING, this.font_, ALIGN_LEFT);
+
+    this.drawSignals(offsetY + NOTE_PADDING + NOTE_MARGIN, optional.signals);
+
+    return t;
   },
 
   /**
