@@ -41,6 +41,43 @@ var ARROWTYPE = Diagram.ARROWTYPE;
 var ALIGN_LEFT   = 0;
 var ALIGN_CENTER = 1;
 
+var OPTIONAL_MAIN_MARGIN = 5;
+var OPTIONAL_MAIN_PADDING = 5;
+var OPTIONAL_MAIN_OVERLAP = 15;
+var OPTIONAL_LABEL_MARGIN = 0;
+var OPTIONAL_LABEL_PADDING = 5;
+var OPTIONAL_MESSAGE_MARGIN = 1;
+var OPTIONAL_MESSAGE_PADDING = 3;
+
+function buildOptionalLabelBox(theme) {
+  var optLabel = 'opt';
+  var labelTextBB = theme.textBBox(optLabel, theme.font_);
+  labelTextBB.height += OPTIONAL_LABEL_PADDING * 2
+  labelTextBB.width += OPTIONAL_LABEL_PADDING * 2
+  labelTextBB.text = optLabel;
+  return labelTextBB;
+}
+
+function buildOptionalMessageBox(theme, message) {
+  var text = '[' + message + ']';
+  var messageTextBB = theme.textBBox(text, theme.font_);
+  messageTextBB.height += OPTIONAL_MESSAGE_PADDING * 2
+  messageTextBB.width += OPTIONAL_MESSAGE_PADDING * 2
+  messageTextBB.text = text;
+  return messageTextBB;
+}
+
+function buildOptionalHeaderBox(theme, message) {
+  var labelBox = buildOptionalLabelBox(theme);
+  var messageBox = buildOptionalMessageBox(theme, message);
+  return {
+    labelBox: labelBox,
+    messageBox: messageBox,
+    width: labelBox.width + messageBox.width,
+    height: Math.max(labelBox.height, messageBox.height)
+  };
+}
+
 function AssertException(message) { this.message = message; }
 AssertException.prototype.toString = function() {
   return 'AssertException: ' + this.message;
@@ -190,8 +227,11 @@ _.extend(BaseTheme.prototype, {
   },
 
   signalLayout: function (signal) {
-    signal.width += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
-    signal.height += (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
+    var bb = this.textBBox(signal.message, this.font_);
+
+    signal.textBB = bb;
+    signal.width = bb.width + (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
+    signal.height = bb.height + (SIGNAL_MARGIN + SIGNAL_PADDING) * 2;
 
     if (signal.isSelf()) {
       // TODO Self signals need a min height
@@ -206,8 +246,11 @@ _.extend(BaseTheme.prototype, {
   },
 
   noteLayout: function (signal) {
-    signal.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
-    signal.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
+    var bb = this.textBBox(signal.message, this.font_);
+
+    signal.textBB = bb;
+    signal.width = bb.width + (NOTE_MARGIN + NOTE_PADDING) * 2;
+    signal.height = bb.height + (NOTE_MARGIN + NOTE_PADDING) * 2;
 
     // HACK lets include the actor'signal padding
     var extraWidth = 2 * ACTOR_MARGIN;
@@ -237,8 +280,17 @@ _.extend(BaseTheme.prototype, {
   },
 
   optionalLayout: function(signal) {
-    signal.width += (NOTE_MARGIN + NOTE_PADDING) * 2;
-    signal.height += (NOTE_MARGIN + NOTE_PADDING) * 2;
+    // Nested signal layouts
+    this.processSignalLayouts(signal.signals);
+    var nestedHeight = _.reduce(signal.signals, function (totalHeight, s) {
+      return totalHeight + s.height;
+    }, 0);
+
+    // Own optional layout
+    signal.headerBox = buildOptionalHeaderBox(this, signal.message);
+
+    signal.width = signal.headerBox.width + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
+    signal.height = nestedHeight + signal.headerBox.height + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
 
     // HACK lets include the actor'signal padding
     var extraWidth = 2 * ACTOR_MARGIN;
@@ -259,23 +311,11 @@ _.extend(BaseTheme.prototype, {
       this.actorEnsureDistance(a - 1, a, signal.width / 2);
       this.actorEnsureDistance(a, a + 1, signal.width / 2);
     }
-
-    // Nested signal layouts
-    this.processSignalLayouts(signal.signals);
-
-    signal.height += _.reduce(signal.signals, function(totalHeight, s) {
-      return totalHeight + s.height;
-    }, 0);
   },
 
   processSignalLayouts: function(signals) {
     _.each(signals, _.bind(function (s) {
       // Indexes of the left and right actors involved
-      var bb = this.textBBox(s.message, this.font_);
-
-      s.textBB = bb;
-      s.width = bb.width;
-      s.height = bb.height;
 
       if (s.type == 'Signal') {
         this.signalLayout(s);
@@ -485,49 +525,40 @@ _.extend(BaseTheme.prototype, {
     optional.y = offsetY;
     var actorA = optional.actors[0];
     var aX = getCenterX(actorA);
-    optional.x = aX - optional.width / 2;
 
     if (optional.actors.length > 1) {
       var bX = getCenterX(optional.actors[optional.actors.length - 1]);
-      var overlap = NOTE_OVERLAP + NOTE_PADDING;
+      var overlap = OPTIONAL_MAIN_OVERLAP + OPTIONAL_MAIN_PADDING;
       optional.x = Math.min(aX, bX) - overlap;
       optional.width = (Math.max(aX, bX) + overlap) - optional.x;
     } else {
+      // We draw the optional with unique actor in the middle
       optional.x = aX - optional.width / 2;
     }
 
     // Main rectangle
-    var t = this.drawRect(optional.x, optional.y, optional.width, optional.height, { transparent: true });
+    var mainRect = {
+      x: optional.x + OPTIONAL_MAIN_MARGIN,
+      y: optional.y + OPTIONAL_MAIN_MARGIN,
+      width: optional.width - 2 * OPTIONAL_MAIN_MARGIN,
+      height: optional.height - 2 * OPTIONAL_MAIN_MARGIN,
+    };
+    var t = this.drawRect(mainRect.x, mainRect.y, mainRect.width, mainRect.height, { transparent: true });
 
     // Opt label
-    var labelTextBB = this.textBBox('opt', this.font_);
-    var paddingLabel = 5;
-    var label = {
-      x: optional.x,
-      y: optional.y,
-      height: labelTextBB.height + paddingLabel * 2,
-      width: labelTextBB.width + paddingLabel * 2
-    };
-    this.drawTextBox(label, 'opt', 0, paddingLabel, this.font_, ALIGN_LEFT);
+    var labelTextBB = optional.headerBox.labelBox;
+    labelTextBB.x = mainRect.x;
+    labelTextBB.y = mainRect.y;
+    this.drawTextBox(labelTextBB, labelTextBB.text, OPTIONAL_LABEL_MARGIN, OPTIONAL_LABEL_PADDING, this.font_, ALIGN_LEFT);
 
     // Opt message
-    var optionalMessage = '[' + optional.message + ']';
-    var messageTextBB = this.textBBox(optionalMessage, this.font_);
-    var paddingMessage = 2;
-    var marginMessage = 1;
-    // var xLast = optional.x + optional.width - paddingMessage - marginMessage;
-    // var availableWidth = xLast - xNext;
-    var messageBox = {
-      x: optional.x + label.width + marginMessage + paddingMessage,
-      y: optional.y,
-      width: messageTextBB.width,
-      height: messageTextBB.height
-    };
-    // this.drawText(messageBox.x, messageBox.y, optionalMessage, this.font_, ALIGN_LEFT);
-    this.drawTextBox(messageBox, optionalMessage, marginMessage, paddingMessage, this.font_, ALIGN_LEFT, { border: false, transparent: false });
+    var messageTextBB = optional.headerBox.messageBox;
+    messageTextBB.x = mainRect.x + labelTextBB.width + OPTIONAL_MESSAGE_MARGIN + OPTIONAL_MESSAGE_PADDING;
+    messageTextBB.y = mainRect.y;
+    this.drawTextBox(messageTextBB, messageTextBB.text, OPTIONAL_MESSAGE_MARGIN, OPTIONAL_MESSAGE_PADDING, this.font_, ALIGN_LEFT, { border: false, transparent: false });
 
-
-    this.drawSignals(offsetY + NOTE_MARGIN + NOTE_PADDING + 10, optional.signals);
+    var headerBoxOffsetY = mainRect.y + optional.headerBox.height + Math.max(OPTIONAL_MESSAGE_MARGIN, OPTIONAL_LABEL_MARGIN);
+    this.drawSignals(headerBoxOffsetY, optional.signals);
 
     return t;
   },
