@@ -189,8 +189,22 @@ if (typeof Snap != 'undefined') {
       return this.pushToStack(line);
     },
 
-    drawRect: function(x, y, w, h) {
-      var rect = this.paper_.rect(x, y, w, h).attr(RECT);
+    drawRect: function(x, y, w, h, options) {
+      console.log(options);
+      options = _.extend({
+        transparent: false,
+        border: true
+      }, options);
+
+      var rectAttrs = {
+        fillOpacity: options.transparent ? 0 : 1
+      };
+      if (!options.border) { rectAttrs.stroke = false; }
+
+      rectAttrs = _.extend({}, RECT, rectAttrs);
+
+      console.log('rect', rectAttrs);
+      var rect = this.paper_.rect(x, y, w, h).attr(rectAttrs);
       return this.pushToStack(rect);
     },
 
@@ -247,6 +261,12 @@ if (typeof Snap != 'undefined') {
       this.beginGroup();
       BaseTheme.prototype.drawNote.call(this, note, offsetY);
       return this.finishGroup().addClass('note');
+    },
+
+    drawOptional: function(optional, offsetY) {
+      this.beginGroup();
+      BaseTheme.prototype.drawOptional.call(this, optional, offsetY);
+      return this.finishGroup().addClass('optional');
     },
   });
 

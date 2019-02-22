@@ -496,10 +496,38 @@ _.extend(BaseTheme.prototype, {
       optional.x = aX - optional.width / 2;
     }
 
-    var optionalMessage = '[' + optional.message + ']';
-    var t = this.drawTextBox(optional, optionalMessage, NOTE_MARGIN, NOTE_PADDING, this.font_, ALIGN_LEFT);
+    // Main rectangle
+    var t = this.drawRect(optional.x, optional.y, optional.width, optional.height, { transparent: true });
 
-    this.drawSignals(offsetY + NOTE_PADDING + NOTE_MARGIN, optional.signals);
+    // Opt label
+    var labelTextBB = this.textBBox('opt', this.font_);
+    var paddingLabel = 5;
+    var label = {
+      x: optional.x,
+      y: optional.y,
+      height: labelTextBB.height + paddingLabel * 2,
+      width: labelTextBB.width + paddingLabel * 2
+    };
+    this.drawTextBox(label, 'opt', 0, paddingLabel, this.font_, ALIGN_LEFT);
+
+    // Opt message
+    var optionalMessage = '[' + optional.message + ']';
+    var messageTextBB = this.textBBox(optionalMessage, this.font_);
+    var paddingMessage = 2;
+    var marginMessage = 1;
+    // var xLast = optional.x + optional.width - paddingMessage - marginMessage;
+    // var availableWidth = xLast - xNext;
+    var messageBox = {
+      x: optional.x + label.width + marginMessage + paddingMessage,
+      y: optional.y,
+      width: messageTextBB.width,
+      height: messageTextBB.height
+    };
+    // this.drawText(messageBox.x, messageBox.y, optionalMessage, this.font_, ALIGN_LEFT);
+    this.drawTextBox(messageBox, optionalMessage, marginMessage, paddingMessage, this.font_, ALIGN_LEFT, { border: false, transparent: false });
+
+
+    this.drawSignals(offsetY + NOTE_MARGIN + NOTE_PADDING + 10, optional.signals);
 
     return t;
   },
@@ -507,14 +535,15 @@ _.extend(BaseTheme.prototype, {
   /**
    * Draw text surrounded by a box
    */
-  drawTextBox: function(box, text, margin, padding, font, align) {
+  drawTextBox: function(box, text, margin, padding, font, align, options) {
+    options = options || {};
     var x = box.x + margin;
     var y = box.y + margin;
     var w = box.width  - 2 * margin;
     var h = box.height - 2 * margin;
 
     // Draw inner box
-    this.drawRect(x, y, w, h);
+    this.drawRect(x, y, w, h, options);
 
     // Draw text (in the center)
     if (align == ALIGN_CENTER) {

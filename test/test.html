@@ -81,11 +81,12 @@ end</textarea>
                         var diagram = Diagram.parse($('#language').val());
                         console.log(diagram);
 
-                        diagram.drawSVG('diagram', {theme: 'hand'});
+                        diagram.drawSVG('diagram', {theme: 'simple'});
                     //} catch (e) {
                     //    console.log(e);
                     //}
                 }, 100));
+                $('#parse').click();
             });
         </script>
     </body>
