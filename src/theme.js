@@ -285,11 +285,17 @@ _.extend(BaseTheme.prototype, {
     var nestedHeight = _.reduce(signal.signals, function (totalHeight, s) {
       return totalHeight + s.height;
     }, 0);
+    var nestedWidth = _.reduce(signal.signals, function (maxWidth, s) {
+      return Math.max(maxWidth, s.width);
+    }, 0);
 
     // Own optional layout
     signal.headerBox = buildOptionalHeaderBox(this, signal.message);
 
-    signal.width = signal.headerBox.width + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
+    signal.ownWidth = signal.headerBox.width + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
+    signal.nestedWidth = nestedWidth + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
+
+    signal.width = Math.max(signal.ownWidth, signal.nestedWidth);
     signal.height = nestedHeight + signal.headerBox.height + (OPTIONAL_MAIN_MARGIN + OPTIONAL_MAIN_PADDING) * 2;
 
     // HACK lets include the actor'signal padding
@@ -532,8 +538,16 @@ _.extend(BaseTheme.prototype, {
       optional.x = Math.min(aX, bX) - overlap;
       optional.width = (Math.max(aX, bX) + overlap) - optional.x;
     } else {
-      // We draw the optional with unique actor in the middle
-      optional.x = aX - optional.width / 2;
+      optional.x = aX - optional.ownWidth / 2;
+    }
+
+    // Special case for self signals, optional box needs to grow on the right as needed
+    var widthestSelfSignal = _.reduce(optional.signals, function(maxWidth, s){
+      return s.isSelf() ? Math.max(maxWidth, s.width) : maxWidth;
+    }, 0);
+
+    if (widthestSelfSignal) {
+      optional.width = Math.max(optional.width, aX + widthestSelfSignal - optional.x);
     }
 
     // Main rectangle
